@@ -257,14 +257,16 @@ def train_one_epoch_iter(
             # Update best metrics and save model
             if val_loss < best_metrics["best_val_loss"]:
                 best_metrics["best_val_loss"] = val_loss
-                # 修改为 save_pretrained (注意：传入的是文件夹路径，不是 .pth 文件)
-                model.save_pretrained(os.path.join(output_dir, 'best_model_loss'))
+                # 安全获取模型 (兼容单卡和多卡 DDP)
+                model_to_save = model.module if hasattr(model, 'module') else model
+                model_to_save.save_pretrained(os.path.join(output_dir, 'best_model_loss'))
                 print(f"New best model saved with validation loss: {val_loss:.4f}")
 
             if val_auc > best_metrics["best_auc"]:
                 best_metrics["best_auc"] = val_auc
-                # 修改为 save_pretrained
-                model.save_pretrained(os.path.join(output_dir, 'best_model_auc'))
+                # 安全获取模型 (兼容单卡和多卡 DDP)
+                model_to_save = model.module if hasattr(model, 'module') else model
+                model_to_save.save_pretrained(os.path.join(output_dir, 'best_model_auc'))
                 print(f"New best model saved with validation AUC: {val_auc:.4f}")
             model.train(True)
 
