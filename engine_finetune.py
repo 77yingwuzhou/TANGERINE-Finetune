@@ -253,17 +253,19 @@ def train_one_epoch_iter(
             print(f"Iteration {current_step}: "
                   f"Validation loss: {val_loss:.4f}, AUC: {val_auc:.4f}, Accuracy: {val_accuracy:.4f}")
 
+            
             # Update best metrics and save model
             if val_loss < best_metrics["best_val_loss"]:
                 best_metrics["best_val_loss"] = val_loss
-                torch.save(model.state_dict(), os.path.join(output_dir, 'best_model_loss.pth'))
+                # 修改为 save_pretrained (注意：传入的是文件夹路径，不是 .pth 文件)
+                model.save_pretrained(os.path.join(output_dir, 'best_model_loss'))
                 print(f"New best model saved with validation loss: {val_loss:.4f}")
 
             if val_auc > best_metrics["best_auc"]:
                 best_metrics["best_auc"] = val_auc
-                torch.save(model.state_dict(), os.path.join(output_dir, 'best_model_auc.pth'))
+                # 修改为 save_pretrained
+                model.save_pretrained(os.path.join(output_dir, 'best_model_auc'))
                 print(f"New best model saved with validation AUC: {val_auc:.4f}")
-
             model.train(True)
 
             # **Store the latest test_stats**
