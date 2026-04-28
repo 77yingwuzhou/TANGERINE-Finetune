@@ -158,7 +158,7 @@ class VisionTransformerMod(timm.models.vision_transformer.VisionTransformer):
     In global pooling mode, the final feature representation is obtained by concatenating the class token
     with the mean-pooled patch tokens, doubling the feature dimension before being passed to the MLP head.
     """
-    def __init__(self, global_pool=False, patch_size=16, embed_dim=1024, hidden_layers=[64, 32], **kwargs):
+    def __init__(self, global_pool=False, patch_size=16, embed_dim=1024, img_size=256, hidden_layers=[64, 32], **kwargs):
         """
         Initializes the VisionTransformerMod.
         Args:
