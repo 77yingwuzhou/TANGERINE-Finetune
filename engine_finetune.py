@@ -217,7 +217,6 @@ def train_one_epoch_iter(
 
         # Adjust learning rate and zero gradients
         if (iteration_counter + data_iter_step) % args.accum_iter == 0:
-            optimizer.zero_grad()
             current_epoch = epoch + data_iter_step / len(data_loader)
             lr_sched.adjust_learning_rate(optimizer, current_epoch, args)
 
@@ -232,9 +231,21 @@ def train_one_epoch_iter(
             if outputs.shape != targets.shape:
                 outputs = outputs.squeeze(-1)
             loss = criterion(outputs, targets)
+        # ==========================================================
+        # 修复的梯度累加逻辑
+        # ==========================================================
+        # 判断当前 step 是否是累加周期的最后一步
+        is_update_step = (iteration_counter + data_iter_step + 1) % args.accum_iter == 0
 
-        # Update the loss scaler and perform optimizer step
-        loss_scaler(loss, optimizer, clip_grad=max_norm, parameters=model.parameters(), create_graph=False)
+        # 将 is_update_step 传给 update_grad。
+        # 为 False 时仅执行 loss.backward()；为 True 时额外执行 optimizer.step()
+        loss_scaler(loss, optimizer, clip_grad=max_norm, parameters=model.parameters(), 
+                    create_graph=False, update_grad=is_update_step)
+
+        # 只有在权重完成更新后，才清空梯度，为下一个累加周期做准备
+        if is_update_step:
+            optimizer.zero_grad()
+        # ==========================================================
 
         # **Update the metric logger**
         metric_logger.update(loss=loss.item())
