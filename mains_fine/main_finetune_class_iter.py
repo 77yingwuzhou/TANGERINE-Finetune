@@ -416,8 +416,8 @@ def main(args):
                 f.write(json.dumps(log_stats) + "\n")
 
     # Save the final model after training is complete
-    final_model_path = os.path.join(args.output_dir, 'final_model.pth')
-    torch.save(model.state_dict(), final_model_path)
+    final_model_path = os.path.join(args.output_dir, 'final_model')
+    model.save_pretrained(final_model_path) # 修改为 save_pretrained
     print(f"Final model saved at: {final_model_path}")
 
     total_time = time.time() - start_time
