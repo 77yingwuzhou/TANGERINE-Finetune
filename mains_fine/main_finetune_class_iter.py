@@ -442,7 +442,8 @@ def main(args):
 
     # Save the final model after training is complete
     final_model_path = os.path.join(args.output_dir, 'final_model')
-    model.save_pretrained(final_model_path) # 修改为 save_pretrained
+    # 使用 model_without_ddp 而不是 model
+    model_without_ddp.save_pretrained(final_model_path) 
     print(f"Final model saved at: {final_model_path}")
 
     total_time = time.time() - start_time
