@@ -57,6 +57,3 @@ PYTHONPATH="." python mains_fine/main_finetune_class_iter_onlyhead.py \
     --weight_decay 0.0
 ```
 
-***
-
-把它放进你的仓库里，整个项目看起来就非常专业了！而且这段文档也完美总结了你在这个实验设计中的核心思路。
