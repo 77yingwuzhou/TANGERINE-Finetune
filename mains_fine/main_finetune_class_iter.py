@@ -59,7 +59,7 @@ def get_args_parser():
                         help='Accumulate gradient iterations (for increasing the effective batch size under memory constraints)')
 
     # Model parameters
-    parser.add_argument('--model', default='vit_large_patch16_yo', type=str, metavar='MODEL',
+    parser.add_argument('--model', default='vit_large_patch16_power_2_yo', type=str, metavar='MODEL',
                         help='Name of model to train')
 
     parser.add_argument('--input_size', default=256, type=int,
@@ -288,29 +288,61 @@ def main(args):
         msg = model.load_state_dict(filtered_checkpoint, strict=False)
         print(msg)
 
-        # manually initialize fc layer
-        if args.model == "vit_large_patch16_yo":
-            trunc_normal_(model.head.weight, std=2e-5)
-        else:
-            # Initialize all Linear layers in the head
-            for module in model.head:
-                if isinstance(module, torch.nn.Linear):
-                    trunc_normal_(module.weight, std=2e-5)
-                    if module.bias is not None:
-                        torch.nn.init.zeros_(module.bias)  # Initialize bias to zeros
-                        
-    # 【LoRA微调】
-    print("Injecting LoRA adapters...")
-    lora_config = LoraConfig(
-        r=8,
-        lora_alpha=16,
-        target_modules=["qkv"], # 针对 timm 架构的注意力机制
-        lora_dropout=0.1,
-        bias="none",
-        modules_to_save=["head", "fc_norm"] # 保证自定义的分类头和归一化层参与训练
-    )
-    model = get_peft_model(model, lora_config)
-    model.print_trainable_parameters() # 打印可训练参数比例，确保注入成功
+        if args.finetune and not args.eval:
+        checkpoint = torch.load(args.finetune, map_location='cpu')
+        print("Load pre-trained checkpoint from: %s" % args.finetune)
+        checkpoint_model = checkpoint['model'] if "model" in checkpoint.keys() else checkpoint['model_state']
+
+        if 'pos_embed' in checkpoint_model:
+            interpolate_pos_embed(model, checkpoint_model)
+
+        # Filter out keys that do not match in shape
+        model_dict = model.state_dict()
+        filtered_checkpoint = {k: v for k, v in checkpoint_model.items() if k in model_dict and model_dict[k].shape == v.shape}
+
+        # Load the filtered checkpoint into the model
+        msg = model.load_state_dict(filtered_checkpoint, strict=False)
+        print(msg)
+
+        # ---------------------------------------------------------
+        # 1. 初始化自定义的 3D 架构分类头和归一化层
+        # ---------------------------------------------------------
+        print("Initializing custom MLP head and fc_norm...")
+        
+        # 遍历 nn.Sequential 内部的所有子层，仅初始化 Linear 层
+        for module in model.head.modules():
+            if isinstance(module, torch.nn.Linear):
+                trunc_normal_(module.weight, std=2e-5)
+                if module.bias is not None:
+                    torch.nn.init.zeros_(module.bias)
+        
+        # 初始化 3D 全局池化后特有的 fc_norm 层
+        if hasattr(model, 'fc_norm') and isinstance(model.fc_norm, torch.nn.LayerNorm):
+            torch.nn.init.constant_(model.fc_norm.bias, 0)
+            torch.nn.init.constant_(model.fc_norm.weight, 1.0)
+
+        # ---------------------------------------------------------
+        # 2. 注入 LoRA (必须在权重初始化完成后执行)
+        # ---------------------------------------------------------
+        print("Injecting LoRA adapters...")
+        from peft import LoraConfig, get_peft_model
+        
+        lora_config = LoraConfig(
+            r=8,
+            lora_alpha=16,
+            target_modules=["qkv"], 
+            lora_dropout=0.1,
+            bias="none",
+            # 明确保护 3D 架构新增的层，让它们参与梯度更新并保存
+            modules_to_save=["head", "fc_norm"] 
+        )
+        
+        model = get_peft_model(model, lora_config)
+        model.print_trainable_parameters()
+        # ---------------------------------------------------------
+
+    # 将包装好 LoRA 并完成初始化的模型送入显卡
+    model.to(device)
     model.to(device)
 
     model_without_ddp = model
