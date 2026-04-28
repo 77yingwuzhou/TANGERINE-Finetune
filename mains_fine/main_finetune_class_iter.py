@@ -307,7 +307,7 @@ def main(args):
         target_modules=["qkv"], # 针对 timm 架构的注意力机制
         lora_dropout=0.1,
         bias="none",
-        modules_to_save=["head", "fc_norm"] # 保证你自定义的分类头和归一化层参与训练
+        modules_to_save=["head", "fc_norm"] # 保证自定义的分类头和归一化层参与训练
     )
     model = get_peft_model(model, lora_config)
     model.print_trainable_parameters() # 打印可训练参数比例，确保注入成功
