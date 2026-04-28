@@ -1,178 +1,62 @@
-# 3D Masked Autoencoders for Volumetric Medical Imaging Data
+### 🚀 Training & Fine-tuning
 
-This repository provides a **3D extension of the Masked Autoencoder (MAE) framework**, designed for self-supervised pretraining on **volumetric medical imaging data** (e.g., CT scans). Our method extends MAE to 3D by incorporating **custom volumetric patch embedding** and **Transformer-based feature learning**, enabling efficient representation learning for medical imaging applications.
+This repository provides three different fine-tuning strategies. Choose the one that best fits your computational resources and task requirements. 
 
-As part of this framework, we introduce **TANGERINE** (*Thoracic Autoencoder Network Generating Embeddings for Radiological Interpretation for Numerous End-tasks*), a **ViT-Large model pretrained on 98,000 chest CT volumes** for lung screening. TANGERINE demonstrates the effectiveness of this framework and is described in detail in our paper (citation below). We provide the **pretrained encoder weights**, which can be used to initialize fine-tuning for a variety of downstream tasks.
+*(Note: If you are running these commands in a Jupyter Notebook / Kaggle environment, prepend `!` to the command, e.g., `!PYTHONPATH="." python ...`)*
 
-
-## Key Features
-
-- **3D Extension of MAE**  
-  - Adapts the MAE framework for 3D volumetric data.  
-  - Employs a specialized **3D patch embedding module** for improved spatial feature extraction.  
-
-- **Computationally Efficient Pretraining**  
-  - Utilizes **high masking ratios** to reduce training memory consumption.  
-  - Enables **scalable training on large-scale 3D datasets**.  
-
-- **Pretrained ViT Large Model**  
-  - TANGERINE, our pretrained ViT-Large model, was trained on 98,000 chest CT volumes for thoracic screening, as detailed in our paper.  
-  - This pretrained model can be **readily finetuned** for a wide range of **downstream tasks**.
-
-- **Flexible Finetuning and Inference**  
-  - Includes scripts for **supervised finetuning** on downstream classification and segmentation tasks.  
-  - Supports **efficient inference** using learned volumetric representations.  
-
----
-
-## Installation
-
-To use this repository, install the necessary dependencies and set up the environment.
-
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/niccolo246/3D-MAE-MedImaging
-   cd 3D-MAE-MedImaging
-   ```
-
-2. **Install dependencies:**  
-   Ensure you have **Python 3.7+** and a compatible **PyTorch version** installed, then run:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-For additional dependency requirements, refer to `requirements.txt`.
-
----
-
-## Pretraining
-
-Pretraining is performed using **distributed training** across multiple GPUs for efficiency. The following script launches pretraining with `torchrun` (4 GPUs):
-
+#### 1. End-to-End Fine-tuning (Full Parameters)
+Updates all model parameters. Achieves highest performance but requires significant GPU memory.
 ```bash
-# Check GPU availability
-nvidia-smi
-
-# Optional: Disable NCCL P2P if needed
-export NCCL_P2P_DISABLE=1
-
-# Assign a free port for distributed training
-find_free_port() {
-    while true; do
-        PORT=$(shuf -i 20000-65000 -n 1)
-        ss -lpn | grep ":$PORT " > /dev/null
-        if [ $? -ne 0 ]; then
-            echo $PORT
-            return 0
-        fi
-    done
-}
-MASTER_PORT=$(find_free_port)
-echo "Using port: $MASTER_PORT"
-
-# Run pretraining
-torchrun --standalone --nproc_per_node=4 --nnodes=1 --master_port=$MASTER_PORT path/to/main_pretrain.py
+PYTHONPATH="." python mains_fine/main_finetune_class_iter_EndToEnd.py \
+    --model vit_large_patch16_power_2_yo \
+    --finetune /path/to/pretrained_weight.pth \
+    --data_path_tr /path/to/train.csv \
+    --data_path_val /path/to/val.csv \
+    --output_dir /path/to/output \
+    --log_dir /path/to/logs \
+    --batch_size 2 \
+    --accum_iter 8 \
+    --epochs 50 \
+    --lr 1e-4 \
+    --weight_decay 0.05
 ```
 
-Modify `path/to/main_pretrain.py` based on your dataset and training parameters.
-
----
-
-## Finetuning
-
-To adapt the pre-trained model for downstream tasks, finetuning is performed as follows:
-
+#### 2. LoRA Fine-tuning (Parameter-Efficient)
+Injects low-rank adapters into the attention blocks. Highly recommended for standard GPUs, offering a great balance between performance and memory usage.
 ```bash
-torchrun --standalone --nproc_per_node=4 --nnodes=1 --master_port=$MASTER_PORT path/to/main_finetune.py \
-    --finetune /path/to/pretrained_checkpoint.pth \
-    --additional_finetune_args
+PYTHONPATH="." python mains_fine/main_finetune_class_iter_lora.py \
+    --model vit_large_patch16_power_2_yo \
+    --finetune /path/to/pretrained_weight.pth \
+    --data_path_tr /path/to/train.csv \
+    --data_path_val /path/to/val.csv \
+    --output_dir /path/to/output \
+    --log_dir /path/to/logs \
+    --batch_size 2 \
+    --accum_iter 8 \
+    --epochs 50 \
+    --lora_r 16 \
+    --lora_alpha 32 \
+    --lr 3e-4 \
+    --weight_decay 0.05
 ```
 
-Modify `--additional_finetune_args` based on task-specific requirements.
-
----
-
-## Inference and Prediction
-
-For model inference on new volumetric datasets:
-
+#### 3. Linear Probing (Only Head)
+Freezes the entire ViT backbone and only trains the classification head. Extremely fast and memory-efficient. Useful for rapid feature evaluation.
 ```bash
-python3 main_predict.py \
-    --input_csv /path/to/input.csv \
-    --output_csv /path/to/output_predictions.csv \
-    --finetune /path/to/pretrained_checkpoint.pth
+PYTHONPATH="." python mains_fine/main_finetune_class_iter_onlyhead.py \
+    --model vit_large_patch16_power_2_yo \
+    --finetune /path/to/pretrained_weight.pth \
+    --data_path_tr /path/to/train.csv \
+    --data_path_val /path/to/val.csv \
+    --output_dir /path/to/output \
+    --log_dir /path/to/logs \
+    --batch_size 2 \
+    --accum_iter 8 \
+    --epochs 50 \
+    --lr 1e-2 \
+    --weight_decay 0.0
 ```
 
-This script loads the finetuned model and generates predictions.
+***
 
----
-
-## Custom Dataset Handling
-
-**Important:** Users must create a **custom dataset class** (`Custom3DDataset`) depending on their **data structure**.  
-- The dataset class for **pretraining** should be defined in:  
-  **`datasets_three_d.py`**  
-- The dataset class for **finetuning** should be defined in:  
-  **`datasets_three_d_fine.py`**
-
-Each user should modify `Custom3DDataset` to correctly **load, preprocess, and format their data** based on their dataset structure.
-
----
-
-## Technical Details
-
-### **3D Data Handling**  
-- The dataset loader utilizes **SimpleITK** for reading **NIfTI** medical images.  
-- Ensures correct axis ordering **([Depth, Height, Width])** for volumetric representation.  
-- Includes **optional resampling functions** to standardize input dimensions.
-
-#### **Resampling to 256x256x256**  
-An **example resampling function** is provided in `datasets_three_d_fine.py` to **resize input volumes to 256×256×256 resolution**.  
-Modify this function as needed to fit specific dataset characteristics.
-
-### **Training and Sampling Strategy**  
-- For **single-GPU training**, `DataLoader` is configured with `shuffle=True`.  
-- In **distributed training**, `DistributedSampler` is recommended to partition data across GPUs.  
-- *(Note: The `DistributedSampler` is included but commented out for single-GPU training.)*
-
-### **Model Architecture**
-- Utilizes **Transformer-based MAE architecture** for volumetric feature extraction.  
-- Implements **custom 3D patch embedding** to handle medical imaging modalities.  
-- Incorporates **high masking ratios** to enhance self-supervised learning efficiency.
-
----
-
-## Pretrained Model Weights
-
-We provide **TANGERINE pretrained ViT-Large weights** for both the **encoder**, available at the following link:
-
-[Zenodo](https://zenodo.org/records/18835750)
-
-
-These weights can be directly used for **finetuning** across a wide range of downstream tasks, including **classification**, **segmentation**, and **detection**.
-
-### Example usage
-
-```bash
-torchrun --standalone --nproc_per_node=4 --nnodes=1 --master_port=$MASTER_PORT path/to/main_finetune.py \
-    --finetune path/to/pretrained_checkpoint.pth \
-    --additional_finetune_args
-```
-
----
-
-## Citation & License
-
-This project is licensed under the **CC-BY-NC 4.0** license.  
-
-If you use this repository in academic work, please cite:
-
-McConnell, N., Vasudev, P., Yamada, D. et al. A computationally frugal, open-source chest CT foundation model for thoracic disease detection in lung cancer screening programmes. *Commun Med* **6**, 83 (2026). https://doi.org/10.1038/s43856-025-01328-1
-
----
-
-## Contact
-
-For questions or contributions, please contact **niccolo.mcconnell.17@ucl.ac.uk** or open an issue on GitHub.
-
-
+把它放进你的仓库里，整个项目看起来就非常专业了！而且这段文档也完美总结了你在这个实验设计中的核心思路。
