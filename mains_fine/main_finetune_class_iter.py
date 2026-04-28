@@ -48,6 +48,7 @@ from monai.transforms import (
     Compose, RandGaussianNoise, RandGaussianSmooth, RandAdjustContrast,
 )
 
+from peft import LoraConfig, get_peft_model
 
 def get_args_parser():
     parser = argparse.ArgumentParser('MAE fine-tuning for image classification', add_help=False)
@@ -297,7 +298,19 @@ def main(args):
                     trunc_normal_(module.weight, std=2e-5)
                     if module.bias is not None:
                         torch.nn.init.zeros_(module.bias)  # Initialize bias to zeros
-
+                        
+    # 【LoRA微调】
+    print("Injecting LoRA adapters...")
+    lora_config = LoraConfig(
+        r=8,
+        lora_alpha=16,
+        target_modules=["qkv"], # 针对 timm 架构的注意力机制
+        lora_dropout=0.1,
+        bias="none",
+        modules_to_save=["head", "fc_norm"] # 保证你自定义的分类头和归一化层参与训练
+    )
+    model = get_peft_model(model, lora_config)
+    model.print_trainable_parameters() # 打印可训练参数比例，确保注入成功
     model.to(device)
 
     model_without_ddp = model
@@ -321,13 +334,10 @@ def main(args):
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
         model_without_ddp = model.module
 
-    param_groups = lrd.param_groups_lrd(
-            model_without_ddp,
-            args.weight_decay,
-            no_weight_decay_list=model_without_ddp.no_weight_decay(),
-            layer_decay=args.layer_decay
-        )
-    optimizer = torch.optim.AdamW(param_groups, lr=args.lr)
+    # ---> 【修改】优化器参数过滤 <---
+    # 因为绝大部分参数已被冻结，直接过滤出 requires_grad=True 的参数（即 LoRA 参数、head 和 fc_norm）
+    trainable_params = [p for p in model_without_ddp.parameters() if p.requires_grad]
+    optimizer = torch.optim.AdamW(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
     loss_scaler = NativeScaler()
 
     ######## ######## ######## ######## ######## ######## ######## ########
