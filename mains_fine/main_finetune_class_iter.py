@@ -322,10 +322,10 @@ def main(args):
         from peft import LoraConfig, get_peft_model
         
         lora_config = LoraConfig(
-            r=8,
-            lora_alpha=16,
+            r=args.lora_r,
+            lora_alpha=args.lora_alpha,
             target_modules=["qkv"], 
-            lora_dropout=0.1,
+            lora_dropout=args.lora_dropout,
             bias="none",
             # 明确保护 3D 架构新增的层，让它们参与梯度更新并保存
             modules_to_save=["head", "fc_norm"] 
